@@ -4,8 +4,8 @@ use anchor_lang::prelude::*;
 pub struct Candidate {
     pub mint: Pubkey,
     pub amount: u64,
-    pub start_date: u64,
-    pub end_date: u64,
+    pub start_date: i64,
+    pub end_date: i64,
 }
 
 impl Candidate {

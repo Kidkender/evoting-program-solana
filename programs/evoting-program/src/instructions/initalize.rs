@@ -33,7 +33,7 @@ pub struct Initalize<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-pub fn exec(ctx: Context<Initalize>, start_date: u64, end_date: u64) -> Result<()> {
+pub fn exec(ctx: Context<Initalize>, start_date: i64, end_date: i64) -> Result<()> {
     let candidate = &mut ctx.accounts.candidate;
 
     candidate.start_date = start_date;

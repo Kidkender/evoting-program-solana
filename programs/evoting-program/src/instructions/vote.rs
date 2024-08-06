@@ -1,18 +1,17 @@
+use crate::errors::ErrorCode;
+use crate::structs::{Ballot, Candidate};
 use anchor_lang::prelude::*;
 use anchor_spl::{associated_token, token};
 
-use crate::structs::{Ballot, Candidate};
-use crate::errors::ErrorCode;
-
 #[derive(Accounts)]
-pub struct Close<'info> {
+pub struct Vote<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
 
     #[account(mut, has_one = mint)]
     pub candidate: Account<'info, Candidate>,
 
-    #[account(seeds = [b"treasurer", &candidate.key().to_bytes()] ,bump)]
+    #[account(seeds = [b"treasurer".as_ref(), &candidate.key().to_bytes()], bump)]
     pub treasurer: AccountInfo<'info>,
 
     pub mint: Box<Account<'info, token::Mint>>,
@@ -21,9 +20,10 @@ pub struct Close<'info> {
     pub candidate_token_account: Account<'info, token::TokenAccount>,
 
     #[account(
-        mut, 
-        close = authority,
-        seeds = [b"ballot".as_ref(), &candidate.key().to_bytes(), &authority.key().to_bytes()], 
+        init_if_needed,
+        payer = authority,
+        space = Ballot::SIZE,
+        seeds = [b"ballot".as_ref(), &candidate.key().to_bytes(), &authority.key().to_bytes()],
         bump
     )]
     pub ballot: Account<'info, Ballot>,
@@ -31,7 +31,7 @@ pub struct Close<'info> {
     #[account(
         mut,
         associated_token::mint = mint,
-        associated_token::authority = authority
+        associated_token::authority = authority,
     )]
     pub voter_token_account: Account<'info, token::TokenAccount>,
 
@@ -41,32 +41,31 @@ pub struct Close<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-pub fn exec(ctx: Context<Close>) -> Result<()> {
+pub fn exec(ctx: Context<Vote>, amount: u64) -> Result<()> {
     let candidate = &mut ctx.accounts.candidate;
     let ballot = &mut ctx.accounts.ballot;
 
-    let now: i64 = Clock::get().unwrap().unix_timestamp;
-
-    if now < candidate.end_date {
-        return err!(ErrorCode::NotEndedCandidate);
+    let now = Clock::get().unwrap().unix_timestamp;
+    if now < candidate.start_date || now > candidate.end_date {
+        return err!(ErrorCode::NotActiveCandidate);
     }
 
-    let seeds: &[&[&[u8]]] = &[&[
-        "treasurer".as_ref(),
-        &candidate.key().to_bytes(),
-        &[ctx.bumps.treasurer] 
-    ]];
-
-    let transfer_tx = CpiContext::new_with_signer(
+    let transfer_ctx = CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
         token::Transfer {
-            from: ctx.accounts.candidate_token_account.to_account_info(),
-            to: ctx.accounts.voter_token_account.to_account_info(),
-            authority: ctx.accounts.treasurer.to_account_info(),
-    }, seeds
-        );
+            from: ctx.accounts.voter_token_account.to_account_info(),
+            to: ctx.accounts.candidate_token_account.to_account_info(),
+            authority: ctx.accounts.authority.to_account_info(),
+        },
+    );
 
-    token::transfer(transfer_tx, ballot.amount)?;
-    ballot.amount = 0;
+    token::transfer(transfer_ctx, amount)?;
+
+    candidate.amount += amount;
+
+    ballot.authority = ctx.accounts.authority.key();
+    ballot.candidate = candidate.key();
+    ballot.amount += amount;
+
     Ok(())
 }
