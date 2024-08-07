@@ -42,11 +42,11 @@ pub struct Vote<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-pub fn exec(ctx: Context<Vote>, amount: u64) -> Result<()> {
-    let candidate = &mut ctx.accounts.candidate;
-    let ballot = &mut ctx.accounts.ballot;
+pub fn exec_vote(ctx: Context<Vote>, amount: u64) -> Result<()> {
+    let candidate: &mut Account<'_, Candidate> = &mut ctx.accounts.candidate;
+    let ballot: &mut Account<'_, Ballot> = &mut ctx.accounts.ballot;
 
-    let now = Clock::get().unwrap().unix_timestamp;
+    let now: i64 = Clock::get().unwrap().unix_timestamp;
     if now < candidate.start_date || now > candidate.end_date {
         return err!(ErrorCode::NotActiveCandidate);
     }

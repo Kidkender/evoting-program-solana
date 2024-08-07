@@ -18,14 +18,14 @@ pub mod evoting_program {
         start_date: i64,
         end_date: i64,
     ) -> Result<()> {
-        initalize::exec(ctx, start_date, end_date)
+        initalize::exec_initialize(ctx, start_date, end_date)
     }
 
     pub fn vote(ctx: Context<Vote>, amount: u64) -> Result<()> {
-        vote::exec(ctx, amount)
+        vote::exec_vote(ctx, amount)
     }
 
     pub fn close(ctx: Context<Close>) -> Result<()> {
-        close::exec(ctx)
+        close::exec_close(ctx)
     }
 }

@@ -42,9 +42,9 @@ pub struct Close<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-pub fn exec(ctx: Context<Close>) -> Result<()> {
-    let candidate = &mut ctx.accounts.candidate;
-    let ballot = &mut ctx.accounts.ballot;
+pub fn exec_close(ctx: Context<Close>) -> Result<()> {
+    let candidate: &mut Account<'_, Candidate> = &mut ctx.accounts.candidate;
+    let ballot: &mut Account<'_, Ballot> = &mut ctx.accounts.ballot;
 
     let now: i64 = Clock::get().unwrap().unix_timestamp;
 
