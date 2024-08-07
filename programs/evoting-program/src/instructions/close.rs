@@ -13,6 +13,7 @@ pub struct Close<'info> {
     pub candidate: Account<'info, Candidate>,
 
     #[account(seeds = [b"treasurer", &candidate.key().to_bytes()] ,bump)]
+    /// CHECK: This is an authority PDA, no further checks needed
     pub treasurer: AccountInfo<'info>,
 
     pub mint: Box<Account<'info, token::Mint>>,
