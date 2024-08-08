@@ -31,15 +31,7 @@ const airdropToken = async (wallet: anchor.web3.PublicKey) => {
     anchor.web3.LAMPORTS_PER_SOL
   );
 
-  const latestBlockHash = await connection.getLatestBlockhash();
-
-  const confirmationStrategy = {
-    signature: airdropSignature,
-    blockhash: latestBlockHash.blockhash,
-    lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-  };
-
-  await connection.confirmTransaction(confirmationStrategy, "confirmed");
+  await connection.confirmTransaction(airdropSignature);
   console.log(`Airdrop successful for wallet: ${wallet.toBase58()}`);
 };
 
@@ -63,7 +55,7 @@ describe("evoting-program", async () => {
   before(async () => {
     const payer = loadKeypairFromFile(process.env.ANCHOR_WALLET);
     // Uncomment when insufu balance
-    // await airdropToken(payer.publicKey);
+    await airdropToken(payer.publicKey);
     const mint = await initlizeMint(9, mintKeypair, provider, payer);
 
     const [treasurerPublicKey] = anchor.web3.PublicKey.findProgramAddressSync(
