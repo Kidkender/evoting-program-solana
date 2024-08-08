@@ -2,9 +2,7 @@ import { AnchorProvider, web3 } from "@coral-xyz/anchor";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   createMint,
-  getMinimumBalanceForRentExemptMint,
   getOrCreateAssociatedTokenAccount,
-  MINT_SIZE,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 
@@ -14,20 +12,17 @@ export const initlizeMint = async (
   provider: AnchorProvider,
   payer: web3.Keypair
 ): Promise<web3.Keypair> => {
-  const lamport = await getMinimumBalanceForRentExemptMint(provider.connection);
-  const ix = web3.SystemProgram.createAccount({
-    fromPubkey: provider.wallet.publicKey,
-    newAccountPubkey: token.publicKey,
-    space: MINT_SIZE,
-    lamports: lamport,
-    programId: TOKEN_PROGRAM_ID,
-  });
+  const connection = provider.connection;
 
-  const tx = new web3.Transaction().add(ix);
+  const accountInfo = await connection.getAccountInfo(token.publicKey);
 
-  await provider.sendAndConfirm(tx, [token]);
+  if (accountInfo !== null) {
+    throw new Error(
+      `Token address ${token.publicKey.toBase58()} already exists.`
+    );
+  }
 
-  await createMint(
+  const mint = await createMint(
     provider.connection,
     payer,
     provider.wallet.publicKey,
@@ -37,21 +32,19 @@ export const initlizeMint = async (
     null,
     TOKEN_PROGRAM_ID
   );
-
-  console.log("Mint created:", token.publicKey.toBase58());
   return token;
 };
 
 export const initializeAccount = async (
-  mint: web3.PublicKey,
   owner: web3.PublicKey,
+  token: web3.PublicKey,
   provider: AnchorProvider,
   payer: web3.Keypair
 ) => {
   const associatedTokenAccount = await getOrCreateAssociatedTokenAccount(
     provider.connection,
     payer,
-    mint,
+    token,
     owner,
     true,
     "confirmed",
@@ -60,9 +53,6 @@ export const initializeAccount = async (
     ASSOCIATED_TOKEN_PROGRAM_ID
   );
 
-  console.log(
-    "Associated Token account created: ",
-    associatedTokenAccount.address.toBase58()
-  );
+  console.log("Associated Token account created: ", associatedTokenAccount);
   return associatedTokenAccount.address;
 };

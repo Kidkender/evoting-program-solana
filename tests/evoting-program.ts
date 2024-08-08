@@ -1,9 +1,16 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
+import { ASSOCIATED_PROGRAM_ID } from "@coral-xyz/anchor/dist/cjs/utils/token";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  getAccount,
+  mintTo,
+  TOKEN_PROGRAM_ID,
+} from "@solana/spl-token";
+import { assert } from "chai";
 import * as fs from "fs";
 import { EvotingProgram } from "../target/types/evoting_program";
 import { initializeAccount, initlizeMint } from "./preTest";
-import { mintTo } from "@solana/spl-token";
 require("dotenv").config();
 
 const totalToken = 1_000_000_000_000;
@@ -14,28 +21,47 @@ const loadKeypairFromFile = (filePath: string): anchor.web3.Keypair => {
 };
 
 const connection = new anchor.web3.Connection(
-  "http://127.0.0.1:8899",
+  "https://api.devnet.solana.com",
   "confirmed"
 );
 
-const aidropToken = async (wallet: anchor.web3.PublicKey) => {
-  const airdropSignature = await connection.requestAirdrop(
-    wallet,
-    anchor.web3.LAMPORTS_PER_SOL
-  );
+const airdropToken = async (wallet: anchor.web3.PublicKey) => {
+  let retries = 5;
+  while (retries > 0) {
+    try {
+      const airdropSignature = await connection.requestAirdrop(
+        wallet,
+        anchor.web3.LAMPORTS_PER_SOL
+      );
 
-  const latestBlockHash = await connection.getLatestBlockhash();
+      const latestBlockHash = await connection.getLatestBlockhash();
 
-  const confirmationStrategy = {
-    signature: airdropSignature,
-    blockhash: latestBlockHash.blockhash,
-    lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-  };
-  await connection.confirmTransaction(confirmationStrategy, "confirmed");
+      const confirmationStrategy = {
+        signature: airdropSignature,
+        blockhash: latestBlockHash.blockhash,
+        lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
+      };
+
+      await connection.confirmTransaction(confirmationStrategy, "confirmed");
+      console.log(`Airdrop successful for wallet: ${wallet.toBase58()}`);
+      return;
+    } catch (error) {
+      console.error(`Airdrop failed: ${error.message}`);
+      retries -= 1;
+      if (retries === 0) {
+        throw new Error("Airdrop failed after multiple attempts");
+      }
+      console.log(`Retrying... (${5 - retries}/5)`);
+      await new Promise((res) => setTimeout(res, 2000));
+    }
+  }
 };
 
-describe("evoting-program", () => {
+describe("evoting-program", async () => {
   // Configure the client to use the local cluster.
+  // anchor.setProvider(anchor.AnchorProvider.local("http://127.0.0.1:8899"));
+  process.env.ANCHOR_PROVIDER_URL = "https://api.devnet.solana.com";
+
   anchor.setProvider(anchor.AnchorProvider.env());
 
   const program = anchor.workspace.EvotingProgram as Program<EvotingProgram>;
@@ -47,12 +73,13 @@ describe("evoting-program", () => {
   let candidateTokenAccount: anchor.web3.PublicKey;
   let walletTokenAccount: anchor.web3.PublicKey;
   let ballot: anchor.web3.PublicKey;
-  const provider = anchor.AnchorProvider.local();
+  const provider = anchor.AnchorProvider.local("https://api.devnet.solana.com");
 
   before(async () => {
-    const payer = anchor.web3.Keypair.generate();
+    const payer = loadKeypairFromFile(process.env.ANCHOR_WALLET);
 
-    await aidropToken(payer.publicKey);
+    // Uncomment when insufu balance
+    // await airdropToken(payer.publicKey);
 
     const mint = await initlizeMint(9, mintKeypair, provider, payer);
 
@@ -82,13 +109,28 @@ describe("evoting-program", () => {
       owner: treasurerPublicKey,
     });
 
-    const associatedTokenAccount = await initializeAccount(
-      mint.publicKey,
-      walletTokenAccount,
-      provider,
-      payer
+    try {
+      const account = await getAccount(provider.connection, walletTokenAccount);
+      console.log("Wallet token account already exists:", account);
+    } catch (error) {
+      console.log("Wallet token account does not exist, creating...");
+      await initializeAccount(
+        provider.wallet.publicKey,
+        mintKeypair.publicKey,
+        provider,
+        payer
+      );
+    }
+
+    const accountInfo = await provider.connection.getAccountInfo(
+      walletTokenAccount
     );
-    mintTo(
+
+    if (!accountInfo) {
+      throw new Error("Token account does not exist or is not initialized");
+    }
+
+    await mintTo(
       connection,
       payer,
       mintKeypair.publicKey,
@@ -101,6 +143,81 @@ describe("evoting-program", () => {
   it("Is initialized candidate !", async () => {
     const now = Math.floor(new Date().getTime() / 1000);
     const startTime = new anchor.BN(now);
-    const endTime = new anchor.BN(now + 5);
+    const endTime = new anchor.BN(now + 10);
+
+    await program.rpc.initializeProgram(startTime, endTime, {
+      accounts: {
+        authority: provider.wallet.publicKey,
+        candidate: candidate.publicKey,
+        treasurer,
+        mint: mintKeypair.publicKey,
+        candidateTokenAccount,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      },
+      signers: [candidate],
+    });
+  });
+
+  it("vote", async () => {
+    return new Promise((resolve) => {
+      setTimeout(async () => {
+        try {
+          await program.rpc.vote(new anchor.BN(10), {
+            accounts: {
+              authority: provider.wallet.publicKey,
+              candidate: candidate.publicKey,
+              treasurer,
+              mint: mintKeypair.publicKey,
+              candidateTokenAccount,
+              ballot,
+              voterTokenAccount: walletTokenAccount,
+              tokenProgram: TOKEN_PROGRAM_ID,
+              associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+              systemProgram: anchor.web3.SystemProgram.programId,
+              rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+            },
+            signers: [],
+          });
+
+          const weigthBallot = await program.account.ballot.fetch(ballot);
+          assert.equal(10, weigthBallot.amount.toNumber());
+        } catch (error) {
+          console.error(error);
+        }
+
+        resolve();
+      }, 2000);
+    });
+  });
+
+  it("close", async () => {
+    return new Promise((resolve) => {
+      setTimeout(async () => {
+        try {
+          await program.rpc.close({
+            accounts: {
+              authority: provider.wallet.publicKey,
+              candidate: candidate.publicKey,
+              treasurer,
+              mint: mintKeypair.publicKey,
+              candidateTokenAccount,
+              ballot,
+              voterTokenAccount: walletTokenAccount,
+              tokenProgram: TOKEN_PROGRAM_ID,
+              associatedTokenProgram: ASSOCIATED_PROGRAM_ID,
+              systemProgram: anchor.web3.SystemProgram.programId,
+              rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+            },
+          });
+        } catch (error) {
+          console.error(error);
+        }
+
+        resolve();
+      }, 10000);
+    });
   });
 });
