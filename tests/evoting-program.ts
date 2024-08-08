@@ -26,35 +26,21 @@ const connection = new anchor.web3.Connection(
 );
 
 const airdropToken = async (wallet: anchor.web3.PublicKey) => {
-  let retries = 5;
-  while (retries > 0) {
-    try {
-      const airdropSignature = await connection.requestAirdrop(
-        wallet,
-        anchor.web3.LAMPORTS_PER_SOL
-      );
+  const airdropSignature = await connection.requestAirdrop(
+    wallet,
+    anchor.web3.LAMPORTS_PER_SOL
+  );
 
-      const latestBlockHash = await connection.getLatestBlockhash();
+  const latestBlockHash = await connection.getLatestBlockhash();
 
-      const confirmationStrategy = {
-        signature: airdropSignature,
-        blockhash: latestBlockHash.blockhash,
-        lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-      };
+  const confirmationStrategy = {
+    signature: airdropSignature,
+    blockhash: latestBlockHash.blockhash,
+    lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
+  };
 
-      await connection.confirmTransaction(confirmationStrategy, "confirmed");
-      console.log(`Airdrop successful for wallet: ${wallet.toBase58()}`);
-      return;
-    } catch (error) {
-      console.error(`Airdrop failed: ${error.message}`);
-      retries -= 1;
-      if (retries === 0) {
-        throw new Error("Airdrop failed after multiple attempts");
-      }
-      console.log(`Retrying... (${5 - retries}/5)`);
-      await new Promise((res) => setTimeout(res, 2000));
-    }
-  }
+  await connection.confirmTransaction(confirmationStrategy, "confirmed");
+  console.log(`Airdrop successful for wallet: ${wallet.toBase58()}`);
 };
 
 describe("evoting-program", async () => {
