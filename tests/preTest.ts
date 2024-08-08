@@ -12,17 +12,7 @@ export const initlizeMint = async (
   provider: AnchorProvider,
   payer: web3.Keypair
 ): Promise<web3.Keypair> => {
-  const connection = provider.connection;
-
-  const accountInfo = await connection.getAccountInfo(token.publicKey);
-
-  if (accountInfo !== null) {
-    throw new Error(
-      `Token address ${token.publicKey.toBase58()} already exists.`
-    );
-  }
-
-  const mint = await createMint(
+  await createMint(
     provider.connection,
     payer,
     provider.wallet.publicKey,

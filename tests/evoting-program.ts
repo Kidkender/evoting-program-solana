@@ -44,7 +44,6 @@ const airdropToken = async (wallet: anchor.web3.PublicKey) => {
 };
 
 describe("evoting-program", async () => {
-  // Configure the client to use the local cluster.
   // anchor.setProvider(anchor.AnchorProvider.local("http://127.0.0.1:8899"));
   process.env.ANCHOR_PROVIDER_URL = "https://api.devnet.solana.com";
 
@@ -63,10 +62,8 @@ describe("evoting-program", async () => {
 
   before(async () => {
     const payer = loadKeypairFromFile(process.env.ANCHOR_WALLET);
-
     // Uncomment when insufu balance
     // await airdropToken(payer.publicKey);
-
     const mint = await initlizeMint(9, mintKeypair, provider, payer);
 
     const [treasurerPublicKey] = anchor.web3.PublicKey.findProgramAddressSync(
@@ -106,14 +103,6 @@ describe("evoting-program", async () => {
         provider,
         payer
       );
-    }
-
-    const accountInfo = await provider.connection.getAccountInfo(
-      walletTokenAccount
-    );
-
-    if (!accountInfo) {
-      throw new Error("Token account does not exist or is not initialized");
     }
 
     await mintTo(
